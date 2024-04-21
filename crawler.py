@@ -18,17 +18,15 @@ class CalPolyCrawler:
 
     def is_target(self, soup):
         # Implement stopping logic here
-        is_target = soup.find("div", {"class": "fac-info"}) and soup.find("aside", {"aria-label": "faculty accolades"})
-        return is_target
+        return soup.find("div", {"class": "fac-info"}) and soup.find("aside", {"aria-label": "faculty accolades"})
     
-    
-    def safe_page(self, url, soup):
+    def save_page(self, url, soup):
         doc = {"url": url, "html": str(soup)}
         self.pages_col.update_one({"url": url}, {'$set': doc}, upsert=True)
 
-
-    def crawl(self):
-        while self.frontier:
+    def crawl(self, num_targets):
+        targets_found = []
+        while self.frontier and len(targets_found) < num_targets:
             url = self.frontier.popleft()
             self.visited.add(url)
             print("Crawling:", url)
@@ -38,14 +36,13 @@ class CalPolyCrawler:
                     soup = BeautifulSoup(html_content, 'html.parser')
                     
                     try:
-                        self.safe_page(url, soup)
+                        self.save_page(url, soup)
                     except Exception as e:
                         print(f'Error saving page {url} to MongoDB: {e}')
                     
                     if self.is_target(soup):
-                        # some stopping logic
-                        print('Tagret condition met.')
-                        return
+                        targets_found.append(url)
+                        continue
 
                     for link in soup.find_all('a', href=True):
                         abs_link = urljoin(url, link['href'].strip())
@@ -56,11 +53,10 @@ class CalPolyCrawler:
             except (HTTPError, URLError) as e:
                 print('Failed to access:', url)
                 continue
-            
-        print('Target not found.')
-        return None
-
+        
+        return targets_found
 
 if __name__ == '__main__':
     crawler = CalPolyCrawler('https://www.cpp.edu/cba/international-business-marketing/index.shtml')
-    crawler.crawl()
+    targets_found = crawler.crawl(num_targets=22)
+    print(targets_found)
