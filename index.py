@@ -5,7 +5,7 @@ import math
 from sentence_transformers import SentenceTransformer
 
 class Indexer:
-    def __init__(self, db_name='CPPTEST', db_host='localhost', db_port=27017):
+    def __init__(self, db_name='CPP_PROJECT', db_host='localhost', db_port=27017):
         self.client = MongoClient(host=db_host, port=db_port)
         self.db = self.client[db_name]
         
@@ -25,12 +25,18 @@ class Indexer:
         # Calculate TF-IDF and store document
         term_frequency = self.get_term_frequency(text)
         tf_idf = self.calculate_tf_idf(term_frequency)
-        self.documents_collection.insert_one({
-            '_id': doc_id,
-            'text': text_str,
-            'vector': vector.tolist(),  # Store vector as a list
-            'tf_idf': dict(tf_idf)  # Store TF-IDF scores as a dictionary
-        })
+        self.documents_collection.update_one(
+            {'_id': doc_id}, 
+            {
+                '$set': {
+                    '_id': doc_id,
+                    'text': text_str,
+                    'vector': vector.tolist(),  # Store vector as a list
+                    'tf_idf': dict(tf_idf)  # Store TF-IDF scores as a dictionary
+                }
+            }, 
+            upsert=True
+        )
 
         self.update_inverted_index(term_frequency, doc_id)
         self.doc_count += 1
