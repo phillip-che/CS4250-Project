@@ -24,6 +24,5 @@ def alter_text(text):
     #stopword removal
     words = [lemmatizer.lemmatize(token.text) for token in doc if token.text not in stop_words]
 
-    new_text = ' '.join(words)
-    return new_text
+    return words
 
