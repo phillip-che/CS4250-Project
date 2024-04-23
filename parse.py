@@ -13,9 +13,9 @@ class Parser:
     # extract only faculty information of page
     def extract(self, soup):
         return soup.find('div', {"class":"row pgtop"}).text
-
-    def process_text(self, text):
-
+    
+    # prepare text for parsing
+    def prepare_text(self, text):
         # lowercase
         text = text.lower()
         
@@ -23,6 +23,12 @@ class Parser:
         text = re.sub(r'<[^>]+>', '', text)
         text = re.sub(r'\b\w{1}\b', '', text)
         text = " ".join(word for word in text.split() if not word.startswith("\\"))
+
+        return text
+
+    def process_text(self, text):
+
+        text = self.prepare_text(text)
         
         # creating nlp doc object from text
         doc = self.nlp(text)
@@ -31,7 +37,6 @@ class Parser:
         words = [token.lemma_ for token in doc if not token.is_stop and not token.is_punct and not token.is_space]
 
         return words
-
 
 if __name__ == "__main__":
     parser = Parser()
