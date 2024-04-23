@@ -7,7 +7,7 @@ from urllib.parse import urljoin, urlparse
 import pymongo
 
 class CalPolyCrawler:
-    def __init__(self, seed_url, db_name="CPPTESTexit", db_host="localhost", db_port=27017):
+    def __init__(self, seed_url, db_name="CPP_PROJECT", db_host="localhost", db_port=27017):
         self.seed_url = seed_url
         self.frontier = deque([seed_url])
         self.visited = set()
@@ -28,7 +28,6 @@ class CalPolyCrawler:
         targets_found = []
         while self.frontier and len(targets_found) < num_targets:
             url = self.frontier.popleft()
-            self.visited.add(url)
             print("Crawling:", url)
             try:
                 with urlopen(url) as response:
