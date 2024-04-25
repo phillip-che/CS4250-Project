@@ -36,8 +36,9 @@ class Ranker:
           #combine the embedding and tf-idf similarity using 50% each
           combined_similarity = 0.5 * tf_idf_similarity + 0.5 * embedding_similarity
           results.append((doc_id, combined_similarity))
-       results.sort(key=lambda x:x[1], reverse=True)
-       return results
+
+        results.sort(key=lambda x:x[1], reverse=True)
+        return results
     
     # METHOD TO FIND RELEVANT DOCS ACCORDING TO QUERY TERMS
     def get_relevant_docs(self, query):
@@ -63,8 +64,9 @@ class Ranker:
         #retrieve relevant doc IDs with the text
         for doc_id in relevant_doc_ids:
           doc = self.documents.collection.find_one({'_id': doc_id})
-          id doc:
+          if doc:
             relevant_docs.append((doc_id, doc['text']))
+          
         return relevant_docs
     
     def get_entities(self, query):
@@ -88,7 +90,9 @@ class Ranker:
         query_tfidf = {}
         #go over the columns of the tf-idf matrix
         for col in query_tfidf_matrix.nonzero()[1]:
-          query_tfidf[feature_names[col]] = query_tfidf_matrix[0, col]
+          term_name = query_names[col]
+          tfidf_score = query_tfidf_matrix[0, col]
+          query_tfidf[term_name] = tfidf_score
         return query_tfidf
 
     def calculate_cosine_similarity(self, vector1, vector2):
