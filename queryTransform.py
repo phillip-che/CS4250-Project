@@ -1,30 +1,34 @@
 import re
-import spacy
+from sklearn.feature_extraction.text import CountVectorizer
+from nltk.stem import WordNetLemmatizer
 
 class QueryTransformer:
     def __init__(self):
-        self.nlp = spacy.load('en_core_web_sm')
-        self.stop_words = set(spacy.lang.en.stop_words.STOP_WORDS)
+        self.vectorizer = CountVectorizer(lowercase=True, stop_words='english', token_pattern=r'\b[a-zA-Z]{2,}\b')
+        self.lemmatizer = WordNetLemmatizer()
 
     def transform_query(self, query_text):
-        # lowercase
+        # Lowercase conversion and removing HTML tags
         query_text = query_text.lower()
-        
-        # removing html tags and other characters 
         query_text = re.sub(r'<[^>]+>', '', query_text)
-        query_text = re.sub(r'\b\w{1}\b', '', query_text)
+        
+        # Remove punctuation
+        query_text = re.sub(r'[^\w\s]', '', query_text)
+        
+        # Removing single-character words and handling backslashes
         query_text = " ".join(word for word in query_text.split() if not word.startswith("\\"))
 
-        return self.lemmatize_tokens(query_text)
+        # Tokenize the cleaned text
+        self.vectorizer.fit([query_text])
+        tokens = self.vectorizer.get_feature_names_out()
 
-    def lemmatize_tokens(self, text):
-        # creating nlp doc object from text
-        doc = self.nlp(text)
-        
-        # lemmatization, tokenization, stop word removal, and punctuation removal
-        tokens = [token.lemma_ for token in doc if not token.is_stop and not token.is_punct and not token.is_space]
+        # Map original text to tokens to preserve order
+        ordered_tokens = [token for token in query_text.split() if token in tokens]
 
-        return tokens
+        # Lemmatize the filtered tokens
+        lemmatized_tokens = [self.lemmatizer.lemmatize(token) for token in ordered_tokens]
+
+        return lemmatized_tokens
 
 if __name__ == "__main__":
     transformer = QueryTransformer()
