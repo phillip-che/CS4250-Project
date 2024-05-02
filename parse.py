@@ -4,55 +4,64 @@ from sklearn.feature_extraction.text import CountVectorizer
 from nltk.stem import WordNetLemmatizer
 import nltk
 import re
+import joblib
+
+class CustomTokenizer:
+    def __init__(self):
+        self.lemmatizer = WordNetLemmatizer()
+
+    def tokenize_and_lemmatize(self, text):
+        tokens = nltk.word_tokenize(text)
+        return [self.lemmatizer.lemmatize(token) for token in tokens]
 
 class Parser:
     def __init__(self, db_name='CPP_PROJECT', db_host='localhost', db_port=27017):
         self.client = MongoClient(host=db_host, port=db_port)
         self.db = self.client[db_name]
         self.pages_col = self.db.pages
-        self.vectorizer = CountVectorizer(lowercase=True, stop_words='english', token_pattern=r'\b[a-zA-Z]{2,}\b')
-        self.lemmatizer = WordNetLemmatizer()
+        custom_tokenizer = CustomTokenizer()
+        self.vectorizer = CountVectorizer(lowercase=True, stop_words='english', ngram_range=(1, 5), tokenizer=custom_tokenizer.tokenize_and_lemmatize)
 
-    # extract only faculty information from page
     def extract(self, soup):
-        found = soup.find('div', {"class":"row pgtop"})
+        found = soup.find('div', {"class": "row pgtop"})
         return found.text if found else ""
 
-    # prepare text for parsing
     def prepare_text(self, text):
-        # Remove HTML tags
         text = re.sub(r'<[^>]+>', '', text)
-        
-        # Remove punctuation
         text = re.sub(r'[^\w\s]', '', text)
-        
-        # Normalize spaces and remove unwanted backslashes
         text = " ".join(word for word in text.split() if not word.startswith("\\"))
         return text
 
-    def process_text(self, text):
-        text = self.prepare_text(text)
+    def process_texts(self):
+        documents = []
+        doc_ids = []
+        # Process all faculty pages
+        for html_content in self.pages_col.find({"url": {"$regex": "^https://www.cpp.edu/faculty/"}}):
+            if html_content:
+                doc_ids.append(html_content['_id'])
+                soup = BeautifulSoup(html_content['html'], 'html.parser')
+                extracted_text = self.extract(soup)
+                prepared_text = self.prepare_text(extracted_text)
+                documents.append(prepared_text)
         
-        # Tokenize text
-        text_matrix = self.vectorizer.fit_transform([text])
-        tokens = self.vectorizer.get_feature_names_out()
+        # Fit the vectorizer on the entire corpus (Gives us the vocabulary)
+        self.vectorizer.fit(documents)
+        joblib.dump(self.vectorizer, './models/vectorizer.pkl')
 
-        # Map original text to tokens to preserve order
-        ordered_tokens = [word for word in text.split() if word in tokens]
+        # Transform each document and collect tokens and counts (Keeps the order of the documents)
+        document_tokens = {}
+        for doc_id, document in zip(doc_ids, documents):
+            vector = self.vectorizer.transform([document]).toarray()
+            feature_names = self.vectorizer.get_feature_names_out()
+            document_tokens[doc_id] = dict(zip(feature_names, vector.flatten()))
 
-        # Lemmatize the ordered tokens
-        lemmatized_tokens = [self.lemmatizer.lemmatize(token) for token in ordered_tokens]
-        
-        return lemmatized_tokens
+        return document_tokens
 
 if __name__ == "__main__":
     parser = Parser()
-
-    # Test case
-    html_content = parser.pages_col.find_one({"url":"https://www.cpp.edu/faculty/mcgood/index.shtml"})
-    if html_content:
-        soup = BeautifulSoup(html_content['html'], 'html.parser')
-        words = parser.process_text(parser.extract(soup))
-        print(words)
-    else:
-        print("No HTML content found for the URL")
+    tokens_by_document = parser.process_texts()
+    for doc_id, tokens in tokens_by_document.items():
+        print(f"Document ID: {doc_id}")
+        for token, count in tokens.items():
+            if count > 0:
+                print(f"{token}: {count}")
