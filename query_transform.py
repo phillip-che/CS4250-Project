@@ -1,11 +1,19 @@
 import re
-from sklearn.feature_extraction.text import CountVectorizer
+import joblib
 from nltk.stem import WordNetLemmatizer
+import nltk
+
+class CustomTokenizer:
+    def __init__(self):
+        self.lemmatizer = WordNetLemmatizer()
+
+    def tokenize_and_lemmatize(self, text):
+        tokens = nltk.word_tokenize(text)
+        return [self.lemmatizer.lemmatize(token) for token in tokens]
 
 class QueryTransformer:
-    def __init__(self):
-        self.vectorizer = CountVectorizer(lowercase=True, stop_words='english', token_pattern=r'\b[a-zA-Z]{2,}\b')
-        self.lemmatizer = WordNetLemmatizer()
+    def __init__(self, vectorizer_path='fitted_vectorizer.pkl'):
+        self.vectorizer = joblib.load(vectorizer_path)
 
     def transform_query(self, query_text):
         # Lowercase conversion and removing HTML tags
@@ -18,17 +26,15 @@ class QueryTransformer:
         # Removing single-character words and handling backslashes
         query_text = " ".join(word for word in query_text.split() if not word.startswith("\\"))
 
-        # Tokenize the cleaned text
-        self.vectorizer.fit([query_text])
-        tokens = self.vectorizer.get_feature_names_out()
+        # Transform the cleaned text using the pre-loaded vectorizer
+        transformed_vector = self.vectorizer.transform([query_text])
+        feature_names = self.vectorizer.get_feature_names_out()
 
-        # Map original text to tokens to preserve order
-        ordered_tokens = [token for token in query_text.split() if token in tokens]
+        # Identify non-zero elements in the transformed vector to get tokens present in the query
+        non_zero_indices = transformed_vector.nonzero()[1]
+        tokens_present = [feature_names[index] for index in non_zero_indices]
 
-        # Lemmatize the filtered tokens
-        lemmatized_tokens = [self.lemmatizer.lemmatize(token) for token in ordered_tokens]
-
-        return lemmatized_tokens
+        return tokens_present
 
 if __name__ == "__main__":
     transformer = QueryTransformer()
