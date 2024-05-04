@@ -36,7 +36,6 @@ class Ranker:
           #combine the embedding and tf-idf similarity using 50% each
           combined_similarity = 0.5 * tf_idf_similarity + 0.5 * embedding_similarity
           results.append((doc_id, combined_similarity))
-
         results.sort(key=lambda x:x[1], reverse=True)
         return results
     
@@ -64,9 +63,8 @@ class Ranker:
         #retrieve relevant doc IDs with the text
         for doc_id in relevant_doc_ids:
           doc = self.documents.collection.find_one({'_id': doc_id})
-          if doc:
+          if doc: 
             relevant_docs.append((doc_id, doc['text']))
-          
         return relevant_docs
     
     def get_entities(self, query):
@@ -98,6 +96,21 @@ class Ranker:
     def calculate_cosine_similarity(self, vector1, vector2):
       return cosine_similarity([list(vector1.values())], [list(vector2.values())])[0][0]
     
+if __name__ == "__main__":
+    # Create an instance of the Ranker class
+    ranker = Ranker()
+
+    # Sample query and document IDs for testing
+    query = "sample query text"
+    doc_ids = ["doc1", "doc2", "doc3"]
+
+    # Call the rank_relevant_docs method
+    results = ranker.rank_relevant_docs(query, doc_ids)
+
+    # Print or inspect the results
+    print("Ranked results:")
+    for doc_id, similarity in results:
+        print(f"Document ID: {doc_id}, Similarity: {similarity}")
     
     
     
