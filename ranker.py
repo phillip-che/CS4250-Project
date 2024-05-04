@@ -4,6 +4,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import spacy
 from pymongo import MongoClient
 from nltk.util import ngrams
+from gensim.models import Word2Vec
+from gensim.utils import simple_preprocess
+import numpy as np
 
 class Ranker:
     def __init__(self, db_name='CPP_PROJECT', db_host='localhost', db_port=27017):
@@ -13,6 +16,7 @@ class Ranker:
         self.documents_collection = self.db.documents
         self.index_collection = self.db.index
         self.nlp = spacy.load('en_core_web_sm')
+        self.word2vec_model = Word2Vec(size = 100, window = 5, min_count = 1, workers = 4)
         
     # METHOD TO RANK RELEVANT DOCS ACCORDING TO QUERY TERMS
     def rank_relevant_docs(self, query, doc_ids):
@@ -31,14 +35,16 @@ class Ranker:
 
           #calculate cosine similarity beween query and document tf-idf, same goes for embedding
           tf_idf_similarity = self.calculate_cosine_similarity(query_tf_idf, doc_tf_idf)
-          embedding_similarity = cosine_similarity([query_embedding], [doc_embedding])[0][0]
+          query_word2vec = self.generate_word_embeddings(query)
+          doc_word2vec = self.generate_word_embeddings(doc_text)
+          word2vec_similarity = self.calculate_word2vec_similarity(query_word2vec, doc_word2vec)
 
           #combine the embedding and tf-idf similarity using 50% each
-          combined_similarity = 0.5 * tf_idf_similarity + 0.5 * embedding_similarity
+          combined_similarity = 0.5 * tf_idf_similarity + 0.5 * word2vec_similarity
           results.append((doc_id, combined_similarity))
         results.sort(key=lambda x:x[1], reverse=True)
         return results
-    
+        
     # METHOD TO FIND RELEVANT DOCS ACCORDING TO QUERY TERMS
     def get_relevant_docs(self, query):
         entities = self.get_entities(query)
@@ -96,6 +102,13 @@ class Ranker:
     def calculate_cosine_similarity(self, vector1, vector2):
       return cosine_similarity([list(vector1.values())], [list(vector2.values())])[0][0]
     
+    def generated_word_embeddings(self, text):
+       tokens = simple_preprocess(text)
+       embeddings = [self.word2vec_model[token] for token in tokens if token in self.word2vec_model]
+       return np.mean(embeddings, axis=0) if embeddings else np.zeros(self.word2vec_model.vector_size)
+    
+    def calculate_word2vec_similarity(self, vec1, vec2):
+       return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 if __name__ == "__main__":
     # Create an instance of the Ranker class
     ranker = Ranker()
