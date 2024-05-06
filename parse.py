@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup
 from pymongo import MongoClient
 from sklearn.feature_extraction.text import CountVectorizer
 from nltk.stem import WordNetLemmatizer
+from gensim.models import Word2Vec
 import nltk
 import re
 import joblib
@@ -13,6 +14,10 @@ class CustomTokenizer:
     def tokenize_and_lemmatize(self, text):
         tokens = nltk.word_tokenize(text)
         return [self.lemmatizer.lemmatize(token) for token in tokens]
+    
+    def tokenize_and_lemmatize_word2vec(self, text):
+        sentences = nltk.sent_tokenize(text)
+        return [[self.lemmatizer.lemmatize(token) for token in nltk.word_tokenize(sentence)] for sentence in sentences]
 
 class Parser:
     def __init__(self, db_name='CPP_PROJECT', db_host='localhost', db_port=27017):
@@ -35,6 +40,7 @@ class Parser:
     def process_texts(self):
         documents = []
         doc_ids = []
+        
         # Process all faculty pages
         for html_content in self.pages_col.find({"url": {"$regex": "^https://www.cpp.edu/faculty/"}}):
             if html_content:
@@ -47,6 +53,11 @@ class Parser:
         # Fit the vectorizer on the entire corpus (Gives us the vocabulary)
         self.vectorizer.fit(documents)
         joblib.dump(self.vectorizer, './models/vectorizer.pkl')
+        
+        # Fit the word2vec model on the entire corpus
+        custom_tokenizer = CustomTokenizer()
+        word2vec_model = Word2Vec(sentences=custom_tokenizer.tokenize_and_lemmatize_word2vec(" ".join(documents)), vector_size=100, window=5, min_count=1, workers=4)
+        word2vec_model.save('./models/word2vec.model')
 
         # Transform each document and collect tokens and counts (Keeps the order of the documents)
         document_tokens = {}
