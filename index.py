@@ -17,7 +17,7 @@ class Indexer:
         self.word2vec_model = Word2Vec.load('./models/word2vec.model')
     
     def add_documents(self, documents):
-        for doc_id, text in documents.items():
+        for doc_id, text in enumerate(documents):
             self.add_document(text, doc_id)
 
     def add_document(self, text, doc_id):
