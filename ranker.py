@@ -9,7 +9,7 @@ from gensim.utils import simple_preprocess
 import numpy as np
 
 class Ranker:
-    def __init__(self, db_name='CPP_PROJECT', db_host='localhost', db_port=27017):
+    def __init__(self, db_name='CPPTESTexit', db_host='localhost', db_port=27017):
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
         self.client = MongoClient(host=db_host, port=db_port)
         self.db = self.client[db_name]
