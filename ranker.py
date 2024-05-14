@@ -37,7 +37,7 @@ class Ranker:
             tfidf_similarity = 0
             sentence_similarity = 0
             
-            if word2vec_vector:
+            if word2vec_vector.any():
                 word2vec_similarity = cosine_similarity([word2vec_vector], [np.array(doc_word_vector_word2vec)]) if doc_word_vector_word2vec is not None else np.array([[0]])
             if query_tfidf_vector.any():
                 tfidf_similarity = cosine_similarity([query_tfidf_vector], [self._get_doc_tfidf_vector(doc)])
@@ -53,7 +53,7 @@ class Ranker:
             print(f"Token overlap score: {token_overlap_score}")
 
             # Calculate the final similarity score
-            similarity_score = (word2vec_similarity + tfidf_similarity + sentence_similarity + token_overlap_score) / 4
+            similarity_score = (word2vec_similarity * 0.3 + tfidf_similarity * 0.2 + sentence_similarity * 0.4 + token_overlap_score * .1) / 4
             print(f"Similarity score: {similarity_score}")
             
             text = doc['text']
