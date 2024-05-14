@@ -12,14 +12,16 @@
         </form>
     </div>
     <div class="results-container">
-        {% for url, snippet in relevant_docs %}
-            <div class="result-item">
-                <a href="{{ url }}" target="_blank">{{ url }}</a>
-                <p>{{ snippet }}</p>
-            </div>
+        {% if relevant_docs %}
+            {% for url, score, snippet in relevant_docs %}
+                <div class="result-item">
+                    <a href="{{ url }}" target="_blank">{{ url }}</a>
+                    <p>{{ snippet }}</p>
+                </div>
+            {% endfor %}
         {% else %}
             <p class='no-results-found'>No results found.</p>
-        {% endfor %}
+        {% endif %}
     </div>
 </body>
 </html>

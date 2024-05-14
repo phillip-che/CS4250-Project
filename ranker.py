@@ -1,131 +1,85 @@
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import TfidfVectorizer
-import spacy
 from pymongo import MongoClient
-from nltk.util import ngrams
-from gensim.models import Word2Vec
-from gensim.utils import simple_preprocess
 import numpy as np
+import joblib
 
 class Ranker:
-    def __init__(self, db_name='CPPTESTexit', db_host='localhost', db_port=27017):
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+    def __init__(self, db_name='CPP_PROJECT', db_host='localhost', db_port=27017, tfidf_vectorizer_path='./models/tfidf_vectorizer.pkl'):
         self.client = MongoClient(host=db_host, port=db_port)
         self.db = self.client[db_name]
         self.documents_collection = self.db.documents
         self.index_collection = self.db.index
-        self.nlp = spacy.load('en_core_web_sm')
-        self.word2vec_model = Word2Vec(size = 100, window = 5, min_count = 1, workers = 4)
-        
-    # METHOD TO RANK RELEVANT DOCS ACCORDING TO QUERY TERMS
-    def rank_relevant_docs(self, query, doc_ids):
-        #retrieve the relevant docs from the query and calculate the tf-idf
-        relevant_docs = self.get_relevant_docs(query)
-        query_tf_idf = self.calculate_tf_idf(query)
+        self.tfidf_vectorizer = joblib.load(tfidf_vectorizer_path)
+        self.feature_names = self.tfidf_vectorizer.get_feature_names_out()
+        self.feature_name_dict = {name: idx for idx, name in enumerate(self.feature_names)}
 
-        #generate sentence embedding (vector)
-        query_embedding = self.model.encode([query])[0]
-        results = []
+    def get_doc_tokens(self, doc_id):
+        tokens = set()
+        for entry in self.index_collection.find({'documents': doc_id}):
+            tokens.add(entry['token'])
+        return tokens
 
-        for doc_id, doc_text in relevant_docs:
-          # Calculate tf-idf of the current doc and generate vector 
-          doc_tf_idf = self.calculate_tf_idf(doc_text)
-          doc_embedding = self.model.encode([doc_text])[0]
+    def get_similar_docs(self, word2vec_vector, tfidf_dict, sentence_embeddings, tokens):
+        docs = []
 
-          #calculate cosine similarity beween query and document tf-idf, same goes for embedding
-          tf_idf_similarity = self.calculate_cosine_similarity(query_tf_idf, doc_tf_idf)
-          query_word2vec = self.generate_word_embeddings(query)
-          doc_word2vec = self.generate_word_embeddings(doc_text)
-          word2vec_similarity = self.calculate_word2vec_similarity(query_word2vec, doc_word2vec)
+        # Create a full-length TF-IDF vector for the query
+        query_tfidf_vector = np.zeros(len(self.feature_names))
+        for term, value in tfidf_dict.items():
+            if term in self.feature_name_dict:
+                query_tfidf_vector[self.feature_name_dict[term]] = value
 
-          #combine the embedding and tf-idf similarity using 50% each
-          combined_similarity = 0.5 * tf_idf_similarity + 0.5 * word2vec_similarity
-          results.append((doc_id, combined_similarity))
-        results.sort(key=lambda x:x[1], reverse=True)
-        return results
-        
-    # METHOD TO FIND RELEVANT DOCS ACCORDING TO QUERY TERMS
-    def get_relevant_docs(self, query):
-        entities = self.get_entities(query)
-        grams = self.get_grams(query)
-        relevant_doc_ids = set()
+        for doc in self.documents_collection.find():
+            doc_word_vector_word2vec = doc.get('word_vector_word2vec')
+            doc_word_vector_pretrained = doc.get('word_vector_pretrained')
+            
+            word2vec_similarity = 0
+            tfidf_similarity = 0
+            sentence_similarity = 0
+            
+            if word2vec_vector:
+                word2vec_similarity = cosine_similarity([word2vec_vector], [np.array(doc_word_vector_word2vec)]) if doc_word_vector_word2vec is not None else np.array([[0]])
+            if query_tfidf_vector.any():
+                tfidf_similarity = cosine_similarity([query_tfidf_vector], [self._get_doc_tfidf_vector(doc)])
+            if sentence_embeddings.any():
+                sentence_similarity = cosine_similarity(sentence_embeddings, [np.array(doc_word_vector_pretrained)]) if doc_word_vector_pretrained is not None else np.array([[0]])
+            
 
-        #search through relevant docs based on entities
-        for entity in entities:
-          result = self.index_collection.find_one({'token': entity})
-          if result:
-            relevant_doc_ids.update(result['documents'])
+            # Token overlap score (Jaccard similarity)
+            doc_tokens = self.get_doc_tokens(doc['_id'])
+            query_tokens = set(tokens)
+            token_overlap_score = len(doc_tokens.intersection(query_tokens)) / len(doc_tokens.union(query_tokens)) if doc_tokens or query_tokens else 0
 
-        #search through relevant docs based on bigrams and trigrams
-        for gram_type in ['bigram', 'trigram']:
-          for gram in grams[gram_type]:
-            gram_str = ' '.join(gram)
-            result = self.index_collection.find_one({'token': gram_str})
+            print(f"Token overlap score: {token_overlap_score}")
+
+            # Calculate the final similarity score
+            similarity_score = (word2vec_similarity + tfidf_similarity + sentence_similarity + token_overlap_score) / 4
+            print(f"Similarity score: {similarity_score}")
+            
+            text = doc['text']
+            words = text.split(' ')
+            try:
+                email_index = words.index('Email')
+            except ValueError:
+                email_index = 20
+                
+            doc_snippet = " ".join(words[:email_index])
+
+            docs.append((doc['url'], similarity_score[0][0], doc_snippet))
+
+        return sorted(docs, key=lambda x: x[1], reverse=True)
+
+    def _get_doc_tfidf_vector(self, doc):
+        doc_tfidf_vector = np.zeros(len(self.feature_names))
+        for term, value in doc['tf_idf'].items():
+            if term in self.feature_name_dict:
+                doc_tfidf_vector[self.feature_name_dict[term]] = value
+        return doc_tfidf_vector
+
+    def get_relevant_docs_by_tokens(self, tokens):
+        doc_ids = set()
+        for token in tokens:
+            result = self.index_collection.find_one({'token': token})
             if result:
-              relevant_doc_ids.update(result['documents'])
-        relevant_docs = []
-
-        #retrieve relevant doc IDs with the text
-        for doc_id in relevant_doc_ids:
-          doc = self.documents.collection.find_one({'_id': doc_id})
-          if doc: 
-            relevant_docs.append((doc_id, doc['text']))
-        return relevant_docs
-    
-    def get_entities(self, query):
-        doc = self.nlp(query)
-        return [ent.text for ent in doc.ents]
-    
-    def get_grams(self, query):
-        words = query.split()
-        bigram = list(ngrams(words, 2))
-        trigram = list(ngrams(words, 3))
-        return {'bigram': bigram, 'trigram': trigram}
-    
-    # IMPLEMENTATION WILL BE DIFFERENT FROM INDEX
-    def calculate_tf_idf(self, query):
-        #fit and transorm the vectorizer
-        tfidf_vectorizer = TfidfVectorizer()
-        query_tfidf_matrix = tfidf_vectorizer.fit_transform([query])
-        #get term names from the vectorizer
-        query_names = tfidf_vectorizer.get_feature_names_out()
-        #for storing tf-idf scores
-        query_tfidf = {}
-        #go over the columns of the tf-idf matrix
-        for col in query_tfidf_matrix.nonzero()[1]:
-          term_name = query_names[col]
-          tfidf_score = query_tfidf_matrix[0, col]
-          query_tfidf[term_name] = tfidf_score
-        return query_tfidf
-
-    def calculate_cosine_similarity(self, vector1, vector2):
-      return cosine_similarity([list(vector1.values())], [list(vector2.values())])[0][0]
-    
-    def generated_word_embeddings(self, text):
-       tokens = simple_preprocess(text)
-       embeddings = [self.word2vec_model[token] for token in tokens if token in self.word2vec_model]
-       return np.mean(embeddings, axis=0) if embeddings else np.zeros(self.word2vec_model.vector_size)
-    
-    def calculate_word2vec_similarity(self, vec1, vec2):
-       return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
-if __name__ == "__main__":
-    # Create an instance of the Ranker class
-    ranker = Ranker()
-
-    # Sample query and document IDs for testing
-    query = "sample query text"
-    doc_ids = ["doc1", "doc2", "doc3"]
-
-    # Call the rank_relevant_docs method
-    results = ranker.rank_relevant_docs(query, doc_ids)
-
-    # Print or inspect the results
-    print("Ranked results:")
-    for doc_id, similarity in results:
-        print(f"Document ID: {doc_id}, Similarity: {similarity}")
-    
-    
-    
-    
-    
+                doc_ids.update(result['documents'])
+        return list(doc_ids)

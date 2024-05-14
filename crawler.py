@@ -55,7 +55,3 @@ class CalPolyCrawler:
         
         return targets_found
 
-if __name__ == '__main__':
-    crawler = CalPolyCrawler('https://www.cpp.edu/cba/international-business-marketing/index.shtml')
-    targets_found = crawler.crawl(num_targets=22)
-    print(targets_found)

@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 from pymongo import MongoClient
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from nltk.stem import WordNetLemmatizer
 from gensim.models import Word2Vec
 import nltk
@@ -26,6 +26,7 @@ class Parser:
         self.pages_col = self.db.pages
         self.custom_tokenizer = CustomTokenizer()
         self.vectorizer = CountVectorizer(lowercase=True, stop_words='english', ngram_range=(1, 5), tokenizer=self.custom_tokenizer.tokenize_and_lemmatize)
+        self.tfidf_vectorizer = TfidfVectorizer(lowercase=True, stop_words='english', ngram_range=(1, 5), tokenizer=self.custom_tokenizer.tokenize_and_lemmatize)
 
     def extract(self, soup):
         found = soup.find('div', {"class": "row pgtop"})
@@ -41,10 +42,12 @@ class Parser:
         documents = []
         doc_ids = []
         ordered_tokens_per_document = []
+        urls = []
 
         # Process all faculty pages
         for html_content in self.pages_col.find({"url": {"$regex": "^https://www.cpp.edu/faculty/"}}):
             if html_content:
+                urls.append(html_content['url'])
                 doc_ids.append(html_content['_id'])
                 soup = BeautifulSoup(html_content['html'], 'html.parser')
                 extracted_text = self.extract(soup)
@@ -55,6 +58,10 @@ class Parser:
         # Fit the vectorizer on the entire corpus (Gives us the vocabulary)
         self.vectorizer.fit(documents)
         joblib.dump(self.vectorizer, './models/vectorizer.pkl')
+
+        # Fit the TF-IDF vectorizer on the entire corpus
+        self.tfidf_vectorizer.fit(documents)
+        joblib.dump(self.tfidf_vectorizer, './models/tfidf_vectorizer.pkl')
         
         # Fit the word2vec model on the combined tokens from all documents
         word2vec_model = Word2Vec(sentences=ordered_tokens_per_document, vector_size=100, window=5, min_count=1, workers=4)
@@ -69,10 +76,5 @@ class Parser:
 
         # Document tokens is a dictionary where the key is the document id and the value is a dictionary of tokens and their counts
         # Ordered tokens per document is a list of lists where each list is the tokens of a document
-        return document_tokens, ordered_tokens_per_document
+        return document_tokens, ordered_tokens_per_document, urls
 
-if __name__ == "__main__":
-    parser = Parser()
-    tokens_by_document, ordered_tokens_per_document = parser.process_texts()
-    #print(tokens_by_document[list(tokens_by_document.keys())[0]])  # Print tokens of the first document
-    print(ordered_tokens_per_document[0])  
