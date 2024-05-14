@@ -2,6 +2,8 @@ import re
 import joblib
 from nltk.stem import WordNetLemmatizer
 import nltk
+from gensim.models import Word2Vec
+from sentence_transformers import SentenceTransformer
 
 class CustomTokenizer:
     def __init__(self):
@@ -12,8 +14,11 @@ class CustomTokenizer:
         return [self.lemmatizer.lemmatize(token) for token in tokens]
 
 class QueryTransformer:
-    def __init__(self, vectorizer_path='fitted_vectorizer.pkl'):
+    def __init__(self, vectorizer_path='./models/vectorizer.pkl', tfidf_vectorizer_path='./models/tfidf_vectorizer.pkl'):
         self.vectorizer = joblib.load(vectorizer_path)
+        self.tfidf_vectorizer = joblib.load(tfidf_vectorizer_path)
+        self.word2vec_model = Word2Vec.load('./models/word2vec.model')
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
     def transform_query(self, query_text):
         # Lowercase conversion and removing HTML tags
@@ -26,6 +31,8 @@ class QueryTransformer:
         # Removing single-character words and handling backslashes
         query_text = " ".join(word for word in query_text.split() if not word.startswith("\\"))
 
+        sentence_embeddings = self.model.encode([query_text])
+        
         # Transform the cleaned text using the pre-loaded vectorizer
         transformed_vector = self.vectorizer.transform([query_text])
         feature_names = self.vectorizer.get_feature_names_out()
@@ -33,11 +40,16 @@ class QueryTransformer:
         # Identify non-zero elements in the transformed vector to get tokens present in the query
         non_zero_indices = transformed_vector.nonzero()[1]
         tokens_present = [feature_names[index] for index in non_zero_indices]
+        
+        word_embeddings = [self.word2vec_model.wv[word] for word in tokens_present if word in self.word2vec_model.wv]
+        if word_embeddings:
+            aggregated_vector = sum(word_embeddings) / len(word_embeddings)
+        else:
+            aggregated_vector = None
 
-        return tokens_present
+        # Calculate TF-IDF values for the query
+        tfidf_vector = self.tfidf_vectorizer.transform([query_text]).todense().tolist()[0]
+        tfidf_dict = {term: tfidf_vector[col] for term, col in self.tfidf_vectorizer.vocabulary_.items() if tfidf_vector[col] > 0}
 
-if __name__ == "__main__":
-    transformer = QueryTransformer()
-    query_text = "I work at McDonalds and try my hardest to create the greatest French Fries. Test query text!"
-    transformed_query = transformer.transform_query(query_text)
-    print(transformed_query)
+        return tokens_present, aggregated_vector, sentence_embeddings, tfidf_dict
+
