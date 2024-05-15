@@ -16,6 +16,6 @@ def build_index():
     indexer.add_documents(ordered_sentences_per_document, urls)
     
 
-# build_index()
+build_index()
 
     

@@ -37,11 +37,11 @@ class Ranker:
             tfidf_similarity = 0
             sentence_similarity = 0
             
-            if word2vec_vector.any():
+            if word2vec_vector is not None and word2vec_vector.any():
                 word2vec_similarity = cosine_similarity([word2vec_vector], [np.array(doc_word_vector_word2vec)]) if doc_word_vector_word2vec is not None else np.array([[0]])
-            if query_tfidf_vector.any():
+            if query_tfidf_vector is not None and query_tfidf_vector.any():
                 tfidf_similarity = cosine_similarity([query_tfidf_vector], [self._get_doc_tfidf_vector(doc)])
-            if sentence_embeddings.any():
+            if sentence_embeddings is not None and sentence_embeddings.any():
                 sentence_similarity = cosine_similarity(sentence_embeddings, [np.array(doc_word_vector_pretrained)]) if doc_word_vector_pretrained is not None else np.array([[0]])
             
 
